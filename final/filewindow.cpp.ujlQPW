@@ -1,0 +1,223 @@
+#include "filewindow.h"
+#include "ui_filewindow.h"
+#include "dialog.h"
+
+
+FileWindow::FileWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::FileWindow),
+    file(nullptr),
+    row(0),
+    col(0),
+    toolbar(nullptr),
+    fontComboBox(nullptr),
+    cdb(nullptr)
+{
+    ui->setupUi(this);
+}
+
+FileWindow::FileWindow(uni::binfile *binfile):
+    QMainWindow(nullptr),
+    ui(new Ui::FileWindow),
+    file(binfile),
+    toolbar(new QToolBar),
+    fontComboBox(new QFontComboBox),
+    cdb(new QColorDialog)
+{
+    connect(this->fontComboBox, &QFontComboBox::currentFontChanged, this, &FileWindow::fontChanged);
+    QAction *colorAction = new QAction("Змінити колір фону", this);
+    connect(cdb, &QColorDialog::colorSelected, this, &FileWindow::changeCellBackgroundColor);
+    connect(colorAction, &QAction::triggered, cdb, &QColorDialog::show);
+
+    this->file->rewrite();
+    ui->setupUi(this);
+    this->addToolBar(toolbar);
+    QAction *action1 = new QAction("Дія 1", &*toolbar);
+    QAction *action2 = new QAction("Дія 2", &*toolbar);
+    toolbar->addAction(action1);
+    toolbar->addAction(action2);
+    this->toolbar->addWidget(this->fontComboBox);
+    toolbar->addAction(colorAction);
+    ui->pushButton_4->hide();
+    ui->pushButton_5->hide();
+    this->toolbar->hide();
+
+    if(this->file->get_cols_size()!=0)
+    ui->tableWidget->setRowCount(this->file->get_rows_size()+1);
+    ui->tableWidget->setColumnCount(this->file->get_cols_size());
+    this->file->rewrite();
+    for(int i=0; i<this->file->get_cols_size(); i++){
+            QTableWidgetItem *it = new QTableWidgetItem(QString::fromStdString(this->file->get_cols()[i]));
+            ui->tableWidget->setItem(0, i, it);
+    }
+    if(this->file->get_cols_size()!=0)
+    for(int i=0; i<this->file->get_rows_size(); i++){
+            for(int j=0; j<this->file->get_cols_size(); j++){
+                QTableWidgetItem *it = new QTableWidgetItem(QString::fromStdString(this->file->get_rows()[i][j]));
+                ui->tableWidget->setItem(i+1, j, it);
+            }
+    }
+    for(auto c:this->file->get_config()){
+    if(c.font!="-")
+    }
+    this->file->close();
+}
+
+FileWindow::~FileWindow()
+{
+    delete ui;
+}
+
+
+
+void FileWindow::on_tableWidget_itemChanged(QTableWidgetItem *item)
+{
+    if(item->row()==0) this->file->rename_col(item->text().toStdString(), item->column());
+    else this->file->edit_row(item->row()-1, item->column(), item->text().toStdString());
+}
+
+
+void FileWindow::on_tableWidget_cellClicked(int row, int column)
+{
+    this->row = row;
+    this->col = column;
+    ui->pushButton_4->show();
+    ui->pushButton_5->show();
+    this->toolbar->show();
+    if (row > 0 && column >= 0) {
+    QTableWidgetItem *item = ui->tableWidget->item(row, column);
+    if (item) {
+            QFont font = item->font();
+            this->fontComboBox->blockSignals(true);
+            this->fontComboBox->setCurrentFont(font);
+            this->fontComboBox->blockSignals(false);
+    }
+    }
+}
+
+
+void FileWindow::on_pushButton_2_clicked()
+{
+        int newColumnIndex = this->file->get_cols_size();
+        ui->tableWidget->setColumnCount(newColumnIndex + 1);
+
+        this->file->new_col("-");
+
+        for (int i = 0; i <= this->file->get_rows_size(); i++) {
+    QTableWidgetItem *it = new QTableWidgetItem("-");
+    ui->tableWidget->setItem(i, newColumnIndex, it);
+        }
+}
+
+
+void FileWindow::on_pushButton_4_clicked()
+{
+    if(this->row!=0){
+        this->file->delete_row(this->row-1);
+        ui->tableWidget->removeRow(row);
+        }
+    this->row=0;
+}
+
+
+void FileWindow::on_pushButton_5_clicked()
+{
+    this->file->delete_col(this->col);
+    ui->tableWidget->removeColumn(col);
+    this->col=0;
+}
+
+
+void FileWindow::on_pushButton_3_clicked()
+{
+    if(this->file->get_cols_size()!=0){
+        this->file->add_row("-", 0);
+        ui->tableWidget->setRowCount(this->file->get_rows_size()+1);
+        for (int i = 0; i < this->file->get_cols_size(); i++) {
+            QTableWidgetItem *it = new QTableWidgetItem("-");
+            ui->tableWidget->setItem(this->file->get_rows_size(), i, it);
+        }
+    }
+}
+
+
+void FileWindow::on_action_2_triggered()
+{
+    Dialog *d = new Dialog;
+    d->setWindowTitle("Введіть ім'я файлу");
+    d->show();
+}
+
+
+void FileWindow::on_action_triggered()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, tr("Відкрити файл"), ".", tr("bcf files (*.bcf)"));
+    if (!filePath.isEmpty()) {
+        QFileInfo fileInfo(filePath);
+        QString fileDirectory = fileInfo.path();
+        uni::binfile *f = new uni::binfile(filePath.toStdString().erase(filePath.size() - 4, 4));
+        this->hide();
+        FileWindow *window = new FileWindow(f);
+        f->rewrite();
+        window->setWindowTitle(QString::fromStdString(f->get_name())+".bcf");
+        window->show();
+    }
+}
+
+
+void FileWindow::on_pushButton_6_clicked()
+{
+    if(this->ui->tableWidget->rowCount()!=0){
+        this->file->clear();
+        this->ui->tableWidget->clear();
+        this->ui->tableWidget->setRowCount(0);
+        this->ui->tableWidget->setColumnCount(0);
+    }
+}
+
+void FileWindow::fontChanged(const QFont &font) {
+    QTableWidgetItem *item = ui->tableWidget->item(this->row, this->col);
+    if (item) {
+        item->setFont(font);
+        this->set_font(font.toString());
+    }
+}
+
+void FileWindow::changeCellBackgroundColor(const QColor &color) {
+    QTableWidgetItem *item = ui->tableWidget->item(this->row, this->col);
+        if (item) {
+        QBrush brush(color);
+        item->setBackground(brush);
+        this->set_back_col(color.name());
+        }
+}
+
+
+void FileWindow::set_font(QString n){
+        uni::cell_config c;
+        c.font = n.toStdString();
+        c.col=this->col;
+        c.row=this->row;
+        this->file->push_conf(c);
+}
+void FileWindow::set_back_col(QString n){
+        uni::cell_config c;
+        c.color = n.toStdString();
+        c.col=this->col;
+        c.row=this->row;
+        this->file->push_conf(c);
+}
+void FileWindow::set_font_col(QString n){
+        uni::cell_config c;
+        c.fcol = n.toStdString();
+        c.col=this->col;
+        c.row=this->row;
+        this->file->push_conf(c);
+}
+void FileWindow::set_font_size(int n){
+        uni::cell_config c;
+        c.size = n;
+        c.col=this->col;
+        c.row=this->row;
+        this->file->push_conf(c);
+}
